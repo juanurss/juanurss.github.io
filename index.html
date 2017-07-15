@@ -2,17 +2,49 @@
 layout: default
 ---
 
-<div class="posts">
-  {% for post in site.posts %}
-    <article class="post">
 
-      <h1><a href="{{ site.baseurl }}{{ post.url }}">{{ post.title }}</a></h1>
+  <div class="container">
+    
+    <hr />
 
-      <div class="entry">
-        {{ post.excerpt }}
+    <div class="row">
+
+      <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4 text-center">
+        <img src="{{site.baseurl}}/img/me.jpg" alt="{{site.name}} - {{site.description}}" class="img-responsive img-circle" width="100%" />
       </div>
+      
+      <div class="col-xs-12 col-sm-8 col-md-8 col-lg-8 intro">
+        Hi! I'm <b>Juan Urbano Stordeur</b> an Information Security Consultant currently located in Buenos Aires, Argentina.
+      </div>
+      
 
-      <a href="{{ site.baseurl }}{{ post.url }}" class="read-more">Read More</a>
-    </article>
-  {% endfor %}
-</div>
+    </div>
+    
+    <hr />
+
+    <div class="posts">
+      {% for post in site.posts limit:5 %}
+      <article class="entry">
+
+        <a href="{{ site.baseurl }}{{ post.url }}">
+          <span class="date">
+            {{ post.date | date: "%d/%m/%Y" }}
+          </span>
+
+          <ul class="tags">
+            {% for tag in post.tags %}
+            <li>
+              {{ tag }}
+            </li>
+            {% endfor %}
+          </ul>
+          
+          <h1 class="title">
+            {{ post.title }}
+          </h1>
+        </a>
+
+      </article>
+      {% endfor %}
+    </div>
+  </div>

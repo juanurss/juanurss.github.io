@@ -1,0 +1,41 @@
+---
+layout: default
+---
+
+
+<div class="container">
+    
+    <hr />
+
+    <div class="row">
+
+      <div class="col-xs-12 ">
+        
+
+        <div class="posts">
+        {% for post in site.posts  %}
+        <article class="entry">
+
+            <a href="{{ site.baseurl }}{{ post.url }}">
+            <span class="date">
+                {{ post.date | date: "%d/%m/%Y" }}
+            </span>
+
+            <ul class="tags">
+                {% for tag in post.tags %}
+                <li>
+                {{ tag }}
+                </li>
+                {% endfor %}
+            </ul>
+            
+            <h1 class="title">
+                {{ post.title }}
+            </h1>
+            </a>
+
+        </article>
+        {% endfor %}
+        </div>
+    </div>
+</div>
