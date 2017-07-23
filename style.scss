@@ -21,6 +21,11 @@ body {
     border-top: 3px solid black;
 }
 
+p {
+    font-size: 16px;
+    line-height: 26px;
+}
+
 /* Customize container */
 @media (min-width: 768px) {
   .container {
@@ -132,7 +137,7 @@ a.border:hover:before {
 }
 /* https://github.com/danleech/simple-icons/blob/develop/icons/twitter.svg */
 ul.social {list-style-type: none; padding: 0;}
-ul.social li {}
+ul.social li {float: left; margin-right: 10px;}
 ul.social li svg{width: 30px;}
 ul.social li.tw svg{fill: #1dcaff;}
 
