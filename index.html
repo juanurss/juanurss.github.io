@@ -38,14 +38,15 @@ layout: default
     </div>
 
     <hr />
-    {% comment %}
+    
     <div class="posts">
+      <h2>Latest blog posts</h2>
       {% for post in site.posts limit:5 %}
       <article class="entry">
 
         <a href="{{ site.baseurl }}{{ post.url }}">
           <span class="date">
-            {{ post.date | date: "%d/%m/%Y" }}
+            {{ post.date | date: "%m/%d/%Y" }}
           </span>
 
           <ul class="tags">
@@ -64,5 +65,5 @@ layout: default
       </article>
       {% endfor %}
     </div>
-    {% endcomment %}
+
   </div>
