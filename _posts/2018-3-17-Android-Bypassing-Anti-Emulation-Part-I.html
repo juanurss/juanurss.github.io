@@ -1,0 +1,175 @@
+---
+layout: post
+title: Android Bypassing Anti-Emulation, Part (I)
+tags: [security, Android, reversing, bypass, anti emulation, apktool, jadx, challenge]
+---
+
+{% comment %}
+https://learn.cloudcannon.com/jekyll/date-formatting/
+http://www.timestampgenerator.com/
+{% endcomment %}
+
+
+<div class="row">
+	<hr>
+    <div class="col-md-12">
+		<br><style>
+			img {
+			    display: block;
+			    margin-left: auto;
+			    margin-right: auto;
+			}
+		</style>
+    	<img src="/img/featured/antiemu/caratula-0.png" title="isEmulator()" class="center" width="50%"/><br>
+    	<p>
+    		<i>TL;DR: I'll talk about some Android protections and a way to bypass the anti-emulation process using apktool and a java decompiler to gain the goal. This is the <b>Part I</b> and I'll talk about introductory topics</i><hr><br>
+			<h2><b>Introduction:</b></h2>
+		<p>
+			This is the first of a series of posts where we will focus in solving Android Reversing challenges. The challenge is focused on a binary protection called "anti-emulation", (you can find more info in the OWASP Top Ten 2014/2016 article:). In the upcoming entries we will talk about other protections like root checker, certificate pinning, anti-tampering, obfuscation techniques, along with ways to protect our app from differents tools (Xposed tool, Frida, etc). 
+		</p>
+		<p>
+			I found this challenge on my personal repository. It came from a Blackhat course I took last year, thanks! <a href="https://twitter.com/Din3zh"> @din3zh</a> and <a href="https://twitter.com/prateekg147">@prateekg147</a>.
+			<br><a href="https://drive.google.com/open?id=1y-1eNQ1iiUwThcs_szHDxKINc1adSvIE"><br>The download link for the apk is</a> and the sha1 signature is: <br><b>a2d88143cc3de73387931f84439a4c5e4fdfe123  ReverzeMe1.apk</b><br></p>
+		<p>
+			Before the analysis of the challenge itself I will introduce the concept of "Anti-Emulation" on Android. A good reference for this topic is the <a href="https://github.com/OWASP/owasp-mstg/blob/master/Document/0x05j-Testing-Resiliency-Against-Reverse-Engineering.md#testing-emulator-detection">Mobile Security Testing Guide</a> by OWASP. They show some examples about these techniques, and different ways to analyze them. There is also an API called SafetyNet, which is an Android API that creates a profile of the device using software and hardware information which is useful for checking different Android protections.</p>
+		<p>
+			If we see inside the <a href="https://github.com/OWASP/owasp-mstg/blob/master/Document/0x05j-Testing-Resiliency-Against-Reverse-Engineering.md#emulator-detection-examples">Emulator Detection Examples section</a>, an application has several ways to detect the emulation process.
+			<br><br>
+			For example, by checking differents methods like <i>"Build"</i>, <i>"TelephonyManager"</i>,<i>"android.os.SystemProperties"</i>, <i>"ro.product.device"</i>, <i>"ro.kernel.qemu"</i>, etc. Depending on the response it can infer if it is running on a physical device in an Android Emulator. To check if the app has this implementation in place, we can try to obtain its code. This can be done through differents techniques and we can use some tools such as <i>apktool</i>, <i>jadx</i> or <i>cfr</i>, etc. </p>
+		<p>
+			We will see how we can make use of some of those tools to obtain a really good approximation of the application code. For example, using apktool we can decode resources to nearly original form. We can even rebuild them after making some modifications. With “jadx" or "cfr" (boths java decompilers) we can analyze the "java code" obtained after the decompilation process. This practice, allows us to look at the code in more natural way, since the output from the java decompilers are ".java" files whereas the output from apktool are ".smali" code files.<br><br>
+			I will not get into Java decompilers in this post, because it is a out of the scope. will simply use them to analyze the code for the application in the challenge. Then, we will modify the application from the .smali code. We will show how to use apktool to obtain a good an approximation of the code, to be able to modify it as we need to and then re-build it.<br>
+			With this in mind, we will take a look at which is the process to create an APK file, since it will be useful to start trying to solve the challenge.</p>
+
+			<h2>The process of creating an APK file:</h2>
+		<p>
+			<ol><li value="1">
+			First, the developer creates its application in .java to then be compiled into  into .class files.</li>
+			<li value="2">
+			Once these .class files are created, they are converted into .dex (Dalvik EXecutables) files. These files contain byte code for the Dalvik Virtual Machine (DVM) which is a non-standar JVM that runs on Android devices.</li>
+			<li value="3">
+			The DVM runs the DEX files while ART runs OAT (ELF) files.</li>
+			<li value="4">
+			Some other XML files are converted to a binary format optimized for space.</li>
+			<li value="5">
+			The last step is the APK creation from the .dex files, binary XML files and other resources needed to run the application and are packaged into an Android Package file (.apk).</li>
+			<li value="6">
+			After the APK file is signed by the developer (we’ll come back to this in the "Manual patching with apktool" section), the APK is ready to be installed.</li>
+			<li value="7">
+			If we want to look at the APK file, we can check its content by unpacking it, for example: <i>$unzip -e example.apk -d example_folder</i></li></ol>
+			<br>
+			In short, the APK file is just a signed zip file that we can unzip them using the unzip command:<br>
+
+			<br><i>$unzip ReverseMe1.apk -d reverseme_unzipped</i><br>
+			<img src="/img/featured/antiemu/AntiEmu-01.png" title="Unzipped apk" width="100%"/><br>
+			<img src="/img/featured/antiemu/AntiEmu-02.png" title="ls -la" width="100%"/><br>	 
+
+			If we take a look at the manifest, we notice that the resources are encoded, we can use apktool to decode them later.</p>
+			<i>$more AndroidManifest.xml</i>
+			<img src="/img/featured/antiemu/AntiEmu-03.png" title="$more AndroidManifest.xml" width="100%" class="featured img-responsive" />
+
+
+			<h2>Anti-Emulation Checks:</h2>
+		<p>
+			As we mentioned earlier, there are several checks that an application can perform in order to detect whether we are running it on an emulated environment or an actual device. Usually malware APKs have these kind of protections to avoid any analisis. Some common validations are listed here (anti-emulation process),  along with some examples.</p>
+		
+		<p>
+			Below are some code examples of different validations that I have encountered on applications while writing this post:</p>
+			<img src="/img/featured/antiemu/AntiEmu-04.png" title="isEmulator()" width="100%" /><br>
+			<img src="/img/featured/antiemu/AntiEmu-05.png" title="smellsLikeAnEmulator()" width="100%"><br>
+			<br><img src="/img/featured/antiemu/AntiEmu-06.png" title="carrierFromTelephonyManager()" width="100%"/>
+
+		<p>
+			Some validation methods are even called <i>“isEmulator()”</i>, <i>“carrierNameFromTelephonyManager()”</i>, or my personal favorite so far, <i>“smellsLikeAnEmulator()”</i>. All of them look for the same, or similar validations. They test with “equals”, “contains”, “startsWith” or “endsWith” against some hardcoded strings that can be interpreted as being set by an emulator. But they all look pretty much the same.</p>
+		<p>
+			I asked myself why this happened? I google it and I had the answer, of course, the first result was a <a href="https://stackoverflow.com/questions/2799097/how-can-i-detect-when-an-android-application-is-running-in-the-emulator">stackoverflow response</a>.</p>
+		<p>
+			I started looking into some others apps, and I found some many more quite similar implementations:</p>
+			<img src="/img/featured/antiemu/AntiEmu-07.png" title="other implementation 1" width="100%" />
+			<br><img src="/img/featured/antiemu/AntiEmu-08.png" title="other implementation 2" width="100%" />
+			<br><img src="/img/featured/antiemu/AntiEmu-09.png" title="other implementation 3" width="100%" />
+			<br><img src="/img/featured/antiemu/AntiEmu-10.png" title="other implementation 4" width="100%" />
+		<p>
+			The difference with the previous set of validation methods is that, while the first set validates through “<i>string comparisons</i>”, the second one does by looking at the “<i>Android system properties</i>” to try to detect emulated environments.</p>
+		<p>
+			Then, by simply analyzing the implementation methods, we can identify two main approaches to implement an anti-emulation protection. We can use this <a href="https://developer.android.com/reference/android/os/Build.html as an Android reference">link</a>.</p>
+			<h3>Strings comparisons:</h3>
+
+		<p>Let’s take look at  the “isEmulator()” example and their validations:</p>
+			<img src="/img/featured/antiemu/AntiEmu-04.png" title="isEmulator()" width="100%"/>
+
+		<p>I wrote this reference table:</p>
+
+			<img src="/img/featured/antiemu/AntiEmu-12-cuadro.png" title="Compartive table" width="100%" /><br>
+			
+		<p>We can check them in a easy way using the following command in our computers with adb:</p>
+			<i>╰─$ adb shell getprop ro.build.fingerprint generic/vbox86p/vbox86p:5.1/LMY47D/genymotion08250738:userdebug/test-keys</i><br>	
+			<br><img src="/img/featured/antiemu/AntiEmu-11.png" title="getprop" width="100%"/>
+			
+		<p><br>
+			Basically we can use <i>$adb shell getprop < key ></i> to check the differents values.
+
+		<h3>Android System Properties validations:</h3>
+		<p>Now that we know how to check for validation through strings, we can do the same  with the Android System Properties validations.</p>
+		<p>Android has a set of properties about the device that can be read using the getprop command line utility, like we saw recently. Those System Properties are stored in a key value pair format in the property files (default.prop, local.prop, etc). And we'll read those to check the Anti-Emulation process.
+		</p><p>
+			If we want to understand more about the property files, using “adb shell cat default.prop”  we can check the property output:</p>
+		<code>$adb shell cat default.prop<br>
+		<br># ADDITIONAL_DEFAULT_PROPERTIES#
+		<br>ro.lockscreen.disable.default=true
+		<br>ro.secure=1
+		<br>ro.allow.mock.location=0
+		<br>ro.debuggable=1
+		<br>ro.zygote=zygote32
+		<br>dalvik.vm.dex2oat-Xms=64m
+		<br>dalvik.vm.dex2oat-Xmx=512m
+		<br>dalvik.vm.image-dex2oat-Xms=64m
+		<br>dalvik.vm.image-dex2oat-Xmx=64m
+		<br>persist.sys.usb.config=adb</code>
+		<br>
+		<br>
+			But if we returned to the previous image:
+		<br>
+		<p>	They are checking <i>ro.hardware</i>, <i>ro.kernel.qemu</i>, <i>ro.serialno</i>, <i>ro.product.name</i>, <i>ro.product.model</i>, <i>ro.hardware</i>, etc. We can check this output too using:</p>
+		<code>
+			╰─$ adb shell getprop ro.product.name<br>
+			vbox86p
+		<br>
+			╰─$ adb shell getprop ro.product.device<br>
+			vbox86p
+		<br>
+			╰─$ adb shell getprop ro.product.model<br>
+			Custom Phone - 5.1.0 - API 22 - 768x1280
+		<br>
+			╰─$ adb shell getprop ro.kernel.qemu<br>
+			1
+		<br>
+			╰─$ adb shell getprop ro.hardware<br>
+			vbox86
+		<br>
+			╰─$ adb shell getprop qemu.hw.mainkeys<br>
+			0
+		<br>
+			╰─$ adb shell getprop ro.bootloader<br>
+			unknown
+		<br>
+			╰─$ adb shell getprop ro.bootmode<br>
+			unknown
+		<br>
+			╰─$ adb shell getprop ro.secure<br>
+			1
+		<br>
+			╰─$ adb shell getprop ro.build.fingerprint<br>
+			generic/vbox86p/vbox86p:5.1/LMY47D/genymotion08250738:userdebug/test-keys
+		<br>
+			╰─$ adb shell getprop ro.build.version.sdk  <br>                          
+			22
+		<br></code>
+		<p>
+			And again if the value of <i>ro.secure</i> is 1, the app is running on a emulator. The same with <i>ro.kernel.qemu</i> and the others. <br>
+		<br>
+			Now is easy to understand which part of the code we need to modify to bypass the emulation process. We need to check all the implementations inside the code to bypass the application.<br><br><b>And we'll discuss that in the next entry. Follow me at <a href="https://twitter.com/juanurss">@juanurss</a> bye!!</b>
+		</p>
+
+
+</div>
