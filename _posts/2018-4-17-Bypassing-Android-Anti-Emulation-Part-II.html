@@ -1,0 +1,88 @@
+---
+layout: post
+title: Bypassing Android Anti-Emulation, Part (II)
+tags: [security, Android, reversing, bypass, anti emulation, apktool, jadx, challenge]
+---
+
+{% comment %}
+https://learn.cloudcannon.com/jekyll/date-formatting/
+http://www.timestampgenerator.com/
+{% endcomment %}
+
+<div class="row"><br><hr>
+    <div class="col-md-12">
+		<br><style>
+			img {
+			    display: block;
+			    margin-left: auto;
+			    margin-right: auto;
+			}
+		</style>
+		<img src="/img/featured/antiemu_II/caratula.png" title="isEmulator()" class="center" width="50%"/>
+    	<p><i>TL;DR: In this second post I'll show you the resolution of the challenge, using two tools. The first in focus on the "Jadx interpretation" and the second in focus on the "Apktool interpretation"</i><a href=http://www.juanurs.com/Android-Bypassing-Anti-Emulation-Part-I/> <i>(You can see Part I here).</i></a></p><hr><br>
+		<h1>Challenge resolution:</h1>
+    	<h2>Jadx challenge interpretation:</h2>
+    	<p>If we install the application inside the emulator and run it, we will see something similar to the screenshot below.. If we write some alphanumeric input a warning stating "This Devices is not supported" will appear. Since we don't know why this happened, we can use jadx to obtain the .java code and use it as a starting point to determine the reason.</p>
+    	<img src="/img/featured/antiemu_II/00_device_not_supported.png" title="00_device_not_supported" class="center" width="40%"/></img>
+    	<p>Of course, we can also use apktool or unzip the APK file to know more about the application, and maybe obtain some other kind of information. In this approach, we will focus on the .java code and try to understand the application workflow.</p>
+    	<p>To decompile the APK, using  jadx is enough for this challenge, although there are  lots of Java decompilers out there that we could also use. </p>
+    	<i>$jadx ReverzeMe1.apk</i>
+    	<img src="/img/featured/antiemu_II/01_jadx_01.png" title="01_jadx_01" class="center" width="100%"/></img>
+    	<img src="/img/featured/antiemu_II/02_jadx_01.png" title="02_jadx_01" class="center" width="100%"/></img>
+		<p>We can see some errors and warnings in the images above, but for the purpose of this post they’re not important. Once the decompilation process has finished, the tool should have created a folder with all the decompiled files, which look like this:</p>
+    	<img src="/img/featured/antiemu_II/03_jadx_challengeJNI.png" title="03_jadx_challengeJNI" class="center" width="100%"/></img>
+		<p>If we look for the text with the warning we saw earlier, we’ll find a "toast", which is a view containing a quick little message for the user. The toast class helps you create and manage them. We can also note that the message is shown depending on the value returned by <i><b>"ChallengeJNI.this.checkIfDeviceIsEmulator().booleanValue()"</b>.</i></p>
+		<p><i>What do you think about this line?? :).</i></p>
+		<img src="/img/featured/antiemu_II/04_checkIfDeviceIsEmulator.png" title="04_checkIfDeviceIsEmulator" class="center" width="100%"/></img>
+		<p>Let’s take a look at the implementation of the  <i>"checkIfDeviceIsEmulator()"</i> function:</p>
+		<img src="/img/featured/antiemu_II/05_checkIfDeviceIsEmulator2.png" title="05_checkIfDeviceIsEmulator2" class="center" width="100%"/></img>
+		<p>Basically what it is doing is checking  some strings  against a set of  predefined strings, like we saw in the “Anti-Emulation Checks” before. Now we will try to bypass them.</p>
+		<br><h2>Apktool challenge interpretation:</h2>
+		<p>Like we already saw, we need to modify the <i>checkIfDeviceIsEmulator()</i> function in order to bypass the application’s validation, so now we are going to use apktool to do that.</p>
+		<h3>Apktool patching and reversing engineering:</h3>
+		<p>After <a href=https://ibotpeaches.github.io/Apktool/install/>we have installed apktool</a>, we can check the options tool. For now we will focus on the decode (‘d’) and build (‘b’) options. Apktool needs an input .apk, which in this case is the one from the challenge we are  trying to solve.</p>
+		<i>$apktool</i>
+		<br><img src="/img/featured/antiemu_II/06_apktool.png" title="06_apktool" class="center" width="100%"/></img>
+		<p>To decode the application execute the following command:</p>
+		<i>$apktool d ReverseMe1.apk -output reverseme_apktool</i>
+		<br><img src="/img/featured/antiemu_II/07_apktool_d.png" title="07_apktool_d" class="center" width="100%"/></img>
+		<i>$ls -la</i>
+		<br><img src="/img/featured/antiemu_II/08_apktool_ls_la.png" title="08_apktool_ls_la" class="center" width="100%"/></img>
+		<i>$cd reverseme_apktool</i><br>
+		<i>$ls -la </i>
+		<br><img src="/img/featured/antiemu_II/09_apktool_ls_la2.png" title="09_apktool_ls_la2" class="center" width="100%"/></img>
+		<p>We can see the internal structure of the decoded APK, the AndroidManifest.xml file and the differents folders like the smali code. Is important to remember the normal APK structure.</p>
+		<ul>
+			<li>smali - disassembled java code</li>
+			<li>res - resources, strings</li>
+			<li>assets - files bundled inside the APK</li>
+			<li>lib - native libraries (*.so files)</li>
+			<li>AndroidManifest.xml - decoded version</li>
+			<li>original and apktool.yml - used by apktool</li>
+		</ul>
+		<p>After decoding the app, we can see the AndroidManifest.xml.</p>
+		<img src="/img/featured/antiemu_II/10_cat_manifest.png" title="10_cat_manifest" class="center" width="100%"/></img>
+		<p>If we look inside the Smali folder we can see all the smali files</p>
+		<img src="/img/featured/antiemu_II/11_ls_smali.png" title="11_ls_smali" class="center" width="100%"/></img>
+		<i>$more ChallengeJNI\$1.smali</i>
+		<img src="/img/featured/antiemu_II/12_more_challengeJNI.png" title="12_more_challengeJNI" class="center" width="100%"/></img>
+		<i>$more ChallengeJNI.smali</i>
+		<img src="/img/featured/antiemu_II/13_more_challengeJNI.png" title="13_more_challengeJNI" class="center" width="100%"/></img>
+		<p>As we can see, working with smali code is harder than with java, so we will move to java decompilers to analyze and interpreter the application code. And after that, we will modify the application to obtain the bypass’ smali code and re build the application. To do that we will make use of some dalvik opcodes.</p>
+		<h4>Understanding dalvik opcodes:</h4>
+		<p>This <a href=http://pallergabor.uw.hu/androidblog/dalvik_opcodes.html>link</a> is really useful, I used it to create a table showing some of the most interesting examples from the “dalvik opcodes” used by the application.</p>
+		<img src="/img/featured/antiemu_II/opcode_1.png" title="opcode1" class="center" width="80%"/>
+        <img src="/img/featured/antiemu_II/opcode_2.png" title="opcode2" class="center" width="80%"/>
+        <img src="/img/featured/antiemu_II/opcode_3.png" title="opcode3" class="center" width="80%"/>
+		<p>Something that we will see very often in the code is a line like this:</p>
+		<b><i>“.method private checkIfDeviceIsEmulator ()Ljava/lang/Boolean;”</i></b>
+		<br><p>It’s important to understand the meaning of this, so let’s break it down:</p>
+		<ol>
+			<li><i> <b>“.method private”</b> -> is the type of method.</i></li>
+			<li><i> <b>checkIfDeviceIsEmulator</b> -> the method name.</i></li>
+			<li><i> <b>()Ljava/lang/Boolean;</b> -> the type of the return value, prefixed with L, dots “.” replaced with slashes “/” and suffixed with semicolon ;</i></li>
+		</ol>
+		<p>That is all! <b>In Part (III)</b> I will solve the challenge using what we have learned.</p>
+		<p>Bye!</p>
+	</div>
+</div>
