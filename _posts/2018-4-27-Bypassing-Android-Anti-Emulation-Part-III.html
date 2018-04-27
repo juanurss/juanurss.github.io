@@ -1,0 +1,91 @@
+---
+layout: post
+title: Bypassing Android Anti-Emulation, Part (III)
+tags: [security, Android, reversing, bypass, anti emulation, apktool, jadx, resolution]
+---
+
+{% comment %}
+https://learn.cloudcannon.com/jekyll/date-formatting/
+http://www.timestampgenerator.com/
+{% endcomment %}
+
+<div class="row"><hr>
+    <div class="col-md-12">
+		<br><style>
+			img {
+			    display: block;
+			    margin-left: auto;
+			    margin-right: auto;
+			}
+		</style>
+		<img src="/img/featured/antiemu_III/caratula.png" title="isEmulator()" class="center" width="50%"/>
+    	<p><i>TL; DR: In this third and final post we will see the final resolution of the challenge, using apktool to achieve the protection of anti emulation! Here you can access <a href=http://www.juanurs.com/Bypassing-Android-Anti-Emulation-Part-I/> <i>Part I</i></a> and <a href=http://www.juanurs.com/Bypassing-Android-Anti-Emulation-Part-II/> <i>Part II</i></a></i></p><hr><br>
+		<h1>Apktool resolution:</h1>
+		<p>First we need to decode our application, and put all the code inside a folder. I called mine “reverseme_apktool:</p>
+		<i>$ apktool d ReverzeMe1.apk</i>
+		<img src="/img/featured/antiemu_III/00_apktool_d.png" title="apktool_decode" class="center" width="100%"/>
+		<p>We can find the method we are interested in, by looking for the “checkIfDeviceIsEmulator” string inside the “ReverzeMe1” folder.</p>
+		<img src="/img/featured/antiemu_III/01_checkIfDeviceIsEmulator().png" title="01_checkIfDeviceIsEmulator()" class="center" width="100%"/>
+		<p>As we can see there are different “const-string” declarations, having as the  second argument a descriptive string such as “generic”, “unknown”, “google_sdk”, “Emulator”, “Android SDK built for x86”, and so on. So, remembering the Java’s implementation of the validation function:</p>
+		<img src="/img/featured/antiemu_III/02_checkIfDeviceIsEmulator2.png" title="02_checkIfDeviceIsEmulator2" class="center" width="100%"/>
+		<p>Is easy to see that, if we bypass those checks “maybe” we could bypass the DeviceEmulator protection. So, let’s do that!</p>
+		<p>First I searched all the const-strings validations and I did some modifications:</p>
+		<img src="/img/featured/antiemu_III/modification_table.png" title="modification_table" class="center" width="100%"/><br>
+		<img src="/img/featured/antiemu_III/03_checkIfDevicesIsEmulator_modified.png" title="03_checkIfDevicesIsEmulator_modified" class="center" width="100%"/>	
+		<p>After the modifications, we have to re-build the application.</p>
+		<i>$apktool b ReverzeMe1 </i>
+		<img src="/img/featured/antiemu_III/04_apktool_b.png" title="04_apktool_b" class="center" width="100%"/>
+		<p>After this step, you should have the modified application already built inside the /dist folder.</p>
+		<img src="/img/featured/antiemu_III/05_apktool_ls_dist.png" title="05_apktool_ls_dist" class="center" width="100%"/>
+		<br><i>$zipalign -v 4 dist/ReverzeMe1.apk ../ReverzeMe1_modified.apk</i>
+		<p>Now we’ve created the “ReverzeMe1_modified.apk”.</p>
+		<p>The next step is signing the application with “apksigner”, but before doing that we need to create a singkey. We’ll use “keytool” for this purpose.</p>
+		<i>$ keytool -genkey -v -keystore ~/.android/debug.keystore -alias signkey -keyalg RSA -keysize 2048 -validity 20000</i>
+		<img src="/img/featured/antiemu_III/06_keytool_0.png" title="06_keytool_0" class="center" width="100%"/>
+		<p>Now  that we’ve created the certificated, we can use “apksigner” to finish the process.</p>
+		<img src="/img/featured/antiemu_III/07_apksigner.png" title="07_apksigner" class="center" width="100%"/>
+		<p>Of course the last step is installing the application in our Emulator.</p>
+		<i>$ adb install ReverzeMe1_modified.apk</i>
+		<img src="/img/featured/antiemu_III/08_adb_install_modified.png" title="08_adb_install_modified" class="center" width="100%"/>
+		<p>We can see a “WARNING” first and then a “Success” message(for now don’t worry about the Warning). Let’s run the application on the Emulator.</p>
+		<img src="/img/featured/antiemu_III/09_wrong_password.png" title="09_wrong_password" class="center" width="50%"/>
+		<p>And now we have a different message!! We passed the first validation, the message changed from “The Device is not supported” to “Wrong Password”. Now we can run the application inside an Android Emulator without any problems.</p>
+		<p>To solve the “password validation”, we can go back to analyze the decompiled code.</p>
+		<img src="/img/featured/antiemu_III/10_pass_condition.png" title="10_pass_condition" class="center" width="100%"/>
+		<p>We can see the password validation is done against the “pass” variable. It should be easy to see that if we change the condition in which the “editTextPassword” value is compared to the “pass” string, we can obtain the flag. Searching inside the apktool folder, we find the “pass” declaration.</p>
+		<img src="/img/featured/antiemu_III/11_pass_smali.png" title="11_pass_smali" class="center" width="100%"/>
+		<p>After seeing this I asked myself, what is the use of “const v4, 0x7f0c0053”? When I converted the hex code to decimal I obtained “0x7f0c0053 = 2131492947”, and by searching that I could find “public static final int editTextPassword = 2131492947;”</p>
+		<img src="/img/featured/antiemu_III/12_ids.png" title="12_ids" class="center" width="100%"/>
+		<p>Basically is the identifier of editTextPassword. Now we can look for the smali code the implementation of the “if” condition, that determines whether our password is right or wrong.</p>
+		<img src="/img/featured/antiemu_III/13_edit_text_password.png" title="13_edit_text_password" class="center" width="100%"/>
+		<p>The next step,modify the Boolean condition:</p>
+		<img src="/img/featured/antiemu_III/14_modified_table.png" title="14_modified_table" class="center" width="100%"/>
+		<p>After that I repeated the manual patching steps, but since modifying an application can be a repetitive process I’ve developed a simple tool called “signing_tool” for which I might write something about in the future. </p>
+		<ol>
+			<li><i> <b>apktool b</b></i></li>
+			<li><i> <b>zipalign</b></i></li>
+			<li><i> <b>apksigner</b></i></li>
+			<li><i> <b>adb install modified_apk</b></i></li>
+		</ol>
+		<p>Here we’ve some screenshot of the process:</p>
+		<i>Signing tool -h:</i>
+		<img src="/img/featured/antiemu_III/15_signing_tool_help.png" title="15_signing_tool_help" class="center" width="100%"/>
+		<p>We used -i in order to install the necessary apps.</p>
+		<p>After that we can use “All steps in one” option (-a):</p>
+		<img src="/img/featured/antiemu_III/16_singtool_1_all.png" title="16_singtool_1_all" class="center" width="100%"/>
+		<img src="/img/featured/antiemu_III/16_signtool_2_all.png" title="16_signtool_2_all" class="center" width="100%"/>
+		<br><i>$adb install ReverseMe1_modified.apk</i>
+		<p>And voila! no matter what the input is, the login application is bypassed!</p>
+		<table>
+		<tr>
+		<td> 
+			<img src="/img/featured/antiemu_III/17_reverzeme_final_1.png" title="17_reverzeme_final_1" class="center" width="90%"/> </td>
+		<td> 
+			<img src="/img/featured/antiemu_III/18_reverzeme_final_2.png" title="18_reverzeme_final_1" class="center" width="90%"/> </td>
+		</tr>
+		</table>
+		<br><h1>Future challenges:</h1>
+		<p>Like I mentioned at the beginning of this post, I will be writing about some other Android protections and about validation in differents applications like: “MDM”, “Secure Vaults” and more! Stay tuned on @juanurss.</p>
+		<p>If this post was useful for you share it!<br>Thank you very much to @fel_d and @rieragerman for your help!!</p>
+
+
